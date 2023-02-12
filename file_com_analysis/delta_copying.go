@@ -12,7 +12,6 @@ import (
 
 type RemoteFile struct {
 	file        *os.File
-	fileSize    uint64
 
 	chunkList   []Chunk
 	chunkCount  uint64
@@ -94,20 +93,20 @@ var(
 
 
 // adler-32 hash
-func NewCheckSum(bytes []byte) (sum CheckSum) {
-	b_sum := 0
+func NewCheckSum(bytes []byte) (sum CheckSum, a_sum , b_sum uint64) {
 
 	chunk_len := len(bytes)
 
 	for idx, el := range bytes {
-		sum += CheckSum(el)
-		b_sum += (chunk_len - idx) * int(el)
+		a_sum += uint64(el)
+		b_sum += uint64(chunk_len - idx) * uint64(el)
 	}
+    
+    a_sum %= MOD2_16
+    b_sum %= MOD2_16
+	sum += CheckSum(a_sum) + CheckSum(b_sum) * MOD2_16
 
-	sum %= MOD2_16
-	sum += CheckSum((b_sum % MOD2_16)) * MOD2_16
-
-	return sum
+	return sum, a_sum, b_sum
 }
 
 func CreateRemoteFile(filePath string) (RemoteFile) {
@@ -138,9 +137,11 @@ func CreateRemoteFile(filePath string) (RemoteFile) {
 			}
 
 		}
+        
+        checkSum, _, _ := NewCheckSum(buf)
 
 		rf.chunkList = append(rf.chunkList, Chunk{
-			NewCheckSum(buf),
+            checkSum,
 			md5.Sum(buf),
 			rf.chunkCount * CHUNK_SIZE,
 			uint64(n),
@@ -265,7 +266,7 @@ func CreateSourceFile(filePath string) (SourceFile) {
     n, err := reader.Read(sf.slidingWin.buffer[:])
     sf.slidingWin.readBytes = uint64(n)
 
-    sf.slidingWin.checkSum = NewCheckSum(sf.slidingWin.buffer[:CHUNK_SIZE])
+    sf.slidingWin.checkSum, sf.slidingWin.a_sum, sf.slidingWin.b_sum = NewCheckSum(sf.slidingWin.buffer[:CHUNK_SIZE])
     sf.reader = reader
     sf.slidingWin.l_idx = CHUNK_SIZE - 1
     return sf
@@ -308,11 +309,8 @@ func (chunk Chunk) String() string {
 
 func (rf RemoteFile) String() string {
     chunkStr := fmt.Sprintf(
-        "size     : %v \n " +
-        "chunks   : %v \n " , 
-        rf.fileSize, rf.chunkCount,
+        "chunks   : %v \n " , rf.chunkCount,
     )
-
 
     for idx, el := range rf.chunkList {
         chunkStr += fmt.Sprintf("\tChunk%v\t\n", idx)
@@ -322,4 +320,24 @@ func (rf RemoteFile) String() string {
     return chunkStr
 }
 
+func (sf SourceFile) String() string {
+    return fmt.Sprintf(
+        "filesize : %v \n " + 
+        "\tSliding Window\n %v",
+        sf.fileSize, sf.slidingWin,
+    )
+}   
 
+func (sw SlidingWindow) String() string {
+    return fmt.Sprintf(
+        "checksum : %v \n " +
+        "buffer   : %v \n " +
+        "readB    : %v \n " +
+        "k_idx    : %v \n " +
+        "l_idx    : %v \n " + 
+        "a_sum    : %v \n " +
+        "b_sum    : %v \n ",
+        sw.checkSum, sw.buffer, sw.readBytes, 
+        sw.k_idx, sw.l_idx, sw.a_sum, sw.b_sum,
+    )
+}
