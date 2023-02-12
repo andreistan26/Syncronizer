@@ -36,16 +36,12 @@ type SourceFile struct {
     slidingWin  SlidingWindow
 }
 
-// Source : https://rsync.samba.org/tech_report/node3.html
-// x represents the value of the byte from the window
-// a(k, l) = (sum i=k->l : x_i) % MOD2_16
-// b(k, l) = (sum i=k->l : (l-i+1) * x_i ) % MOD2_16
-// checkSum = a(k, l) + MOD2_16 * b(k, l)
 type SlidingWindow struct {
     checkSum    CheckSum
 
     buffer      [CHUNK_SIZE * 4]byte
     readBytes   uint64
+    cap         uint64
 
     k_idx       uint64
     l_idx       uint64
@@ -91,8 +87,12 @@ var(
     ErrSWSize       = errors.New("Sliding window size is not equal to CHUNK_SIZE")
 )
 
-
 // adler-32 hash
+// Source : https://rsync.samba.org/tech_report/node3.html
+// x represents the value of the byte from the window
+// a(k, l) = (sum i=k->l : x_i) % MOD2_16
+// b(k, l) = (sum i=k->l : (l-i+1) * x_i ) % MOD2_16
+// checkSum = a(k, l) + MOD2_16 * b(k, l)
 func NewCheckSum(bytes []byte) (sum CheckSum, a_sum , b_sum uint64) {
 
 	chunk_len := len(bytes)
@@ -174,7 +174,7 @@ func (sf *SourceFile) GetCurrentSW() []byte {
     if (sf.slidingWin.l_idx - sf.slidingWin.k_idx + 1) != CHUNK_SIZE {
         panic(ErrSWSize)
     }
-    return sf.slidingWin.buffer[sf.slidingWin.k_idx : sf.slidingWin.l_idx]
+    return sf.slidingWin.buffer[sf.slidingWin.k_idx : sf.slidingWin.l_idx + 1]
 }
 
 // copy pasted from https://stackoverflow.com/questions/37334119/how-to-delete-an-element-from-a-slice-in-golang
@@ -188,11 +188,26 @@ func RemoveIndex(s []*Chunk, index int) []*Chunk {
 
 func (ex RsyncExchange) Search() (response Response) {
     var packetAData []byte
-SlideLoop:
-    for ;; {
+    var err error
+    var offset uint64 = 1
+SearchLoop:
+    for ;; err = ex.sourceFile.slidingWin.roll(offset){
+        
+        offset = 1
+        // ensures that we always have bytes in the buffer to roll 
+        if err == ErrSWStuck {
+            n, read_err := ex.sourceFile.Read(true)
+            if n == 0 && read_err == io.EOF {
+                // search completed
+                break;
+            } else {
+                // otherwise we would do a repeted search
+                continue;
+            }
+        }
 
         // check if current checksum is entry in the hashmap
-        if res, ok := ex.hashMap[ex.sourceFile.slidingWin.checkSum]; ok{
+        if res, ok := ex.hashMap[ex.sourceFile.slidingWin.checkSum]; ok {
             
             // linear search hashmap value at found key
             for idx, chunk := range res {
@@ -217,16 +232,17 @@ SlideLoop:
                         B_BLOCK,
                         idxBytes,
                     })
-                                       
+
+
+                    offset = CHUNK_SIZE
                     // remove chunk from hashmap value list
                     // TODO optimize this ugly thing
                     ex.hashMap[ex.sourceFile.slidingWin.checkSum] = RemoveIndex(res, idx)
-                    continue SlideLoop
+                    continue SearchLoop
                 }
             }
-
-            // tracking the weak checksum collisions
-            fmt.Fprintf(os.Stderr, "Checksum matched entry but no hash!")
+            // TODO replace with acutal log, bad way to keep track of things
+            // fmt.Fprintf(os.Stderr, "Checksum matched but strongHash didn't")
         }
 
         // TODO optimize this, appending every byte..
@@ -241,9 +257,6 @@ SlideLoop:
             })
             packetAData = packetAData[:0]
         }
-        
-        // rolling the window
-        ex.sourceFile.slidingWin.roll()
     }
     return response
 }
@@ -257,38 +270,50 @@ func CreateSourceFile(filePath string) (SourceFile) {
 	if err != nil {
 		panic(err)
 	}
-	defer sf.file.Close()
 
     stats, _ := sf.file.Stat()
     sf.fileSize = uint64(stats.Size())
 
-	reader := bufio.NewReader(sf.file)
-    n, err := reader.Read(sf.slidingWin.buffer[:])
+	sf.reader = bufio.NewReader(sf.file)
+    n, err := sf.reader.Read(sf.slidingWin.buffer[:])
     sf.slidingWin.readBytes = uint64(n)
+    sf.slidingWin.cap = uint64(n)
 
     sf.slidingWin.checkSum, sf.slidingWin.a_sum, sf.slidingWin.b_sum = NewCheckSum(sf.slidingWin.buffer[:CHUNK_SIZE])
-    sf.reader = reader
     sf.slidingWin.l_idx = CHUNK_SIZE - 1
     return sf
 } 
 
 // returns io.EOF if i cannot read anymore 
-func (sf *SourceFile) Read() error {
-    
-    return nil
+// my buffer is 4 * CHUNK_SIZE so i need to read 3 * CHUNK_SIZE
+// reads next 3 * CHUNK_SIZE bytes from file and resets k and l
+func (sf *SourceFile) Read(resetWindowBounds bool) (int, error) {
+    var newBuf [4 * CHUNK_SIZE]byte
+    copy(newBuf[:], sf.slidingWin.buffer[sf.slidingWin.k_idx:])
+    dif := sf.slidingWin.cap - sf.slidingWin.k_idx - 1
+    n, err := sf.reader.Read(newBuf[dif:])
+    sf.slidingWin.buffer = newBuf
+    sf.slidingWin.readBytes += uint64(n)
+    sf.slidingWin.cap = uint64(n) + dif
+    if resetWindowBounds {
+        sf.slidingWin.l_idx = CHUNK_SIZE - 1
+        sf.slidingWin.k_idx = 0
+    }
+    return n, err
 }
 
-func (sw *SlidingWindow) roll() (err error) {
-    sw.k_idx++;
-    sw.l_idx++;
-    
-    if sw.readBytes == sw.k_idx {
+func (sw *SlidingWindow) roll(offset uint64) (err error) {
+    // check upper bound would be higher then we need to read more
+    if sw.cap <= (sw.l_idx + offset) {
         return ErrSWStuck
     }
 
-    sw.a_sum = (sw.a_sum - uint64(sw.buffer[sw.k_idx]) +
-                uint64(sw.buffer[sw.l_idx + 1])) % MOD2_16
-    sw.b_sum = (sw.b_sum - (sw.l_idx - sw.k_idx + 1) * uint64(sw.buffer[sw.k_idx]) +
+    sw.k_idx+=offset;
+    sw.l_idx+=offset;
+
+    sw.a_sum = (sw.a_sum - uint64(sw.buffer[sw.k_idx - 1]) +
+                uint64(sw.buffer[sw.l_idx])) % MOD2_16
+    sw.b_sum = (sw.b_sum - CHUNK_SIZE * uint64(sw.buffer[sw.k_idx - 1]) +
                 sw.a_sum) % MOD2_16
     sw.checkSum = CheckSum(sw.a_sum) + MOD2_16 * CheckSum(sw.b_sum)
 
@@ -340,4 +365,33 @@ func (sw SlidingWindow) String() string {
         sw.checkSum, sw.buffer, sw.readBytes, 
         sw.k_idx, sw.l_idx, sw.a_sum, sw.b_sum,
     )
+}
+
+func (resp ResponseType) String() string {
+    switch resp {
+    case A_BLOCK :
+        return "A_BLOCK"
+    default :
+        return "B_BLOCK"
+    }
+}
+
+func (packet ResponsePacket) String() string {
+    return fmt.Sprintf(
+        "Block Type : %v \n " +
+        "Data       : %v \n ",
+         packet.blockType, packet.data,
+     )
+}
+
+func (response Response) String() string {
+    var responseStr string
+    for idx, el := range response {
+        responseStr += fmt.Sprintf(
+            "\tPacket %v \n" + 
+            "%v\n",
+            idx, el,
+        )
+    }
+    return responseStr
 }
