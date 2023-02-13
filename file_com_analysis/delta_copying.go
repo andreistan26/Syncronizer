@@ -84,7 +84,9 @@ const (
 var( 
     ErrNoFile       = errors.New("No file bound to the type!")
     ErrSWStuck      = errors.New("No more bytes to slide!")
-    ErrSWSize       = errors.New("Sliding window size is not equal to CHUNK_SIZE")
+    ErrSWSize       = errors.New("Sliding window size is not equal to CHUNK_SIZE!")
+    ErrSWSizeRem    = errors.New("Sliding window is stuck but still has data to be read!")
+    ErrSWSizeNoData = io.EOF
 )
 
 // adler-32 hash
@@ -104,7 +106,7 @@ func NewCheckSum(bytes []byte) (sum CheckSum, a_sum , b_sum uint64) {
     
     a_sum %= MOD2_16
     b_sum %= MOD2_16
-	sum += CheckSum(a_sum) + CheckSum(b_sum) * MOD2_16
+	sum = CheckSum(a_sum) + CheckSum(b_sum) * MOD2_16
 
 	return sum, a_sum, b_sum
 }
@@ -160,21 +162,21 @@ func CreateRsyncExchange (sf *SourceFile, remoteChunks []Chunk) (RsyncExchange, 
         hashMap: make(HashMap),
     }
 
-    for _, chunk := range remoteChunks {
+    for idx, chunk := range remoteChunks {
         if _, ok := ex.hashMap[chunk.checkSum]; !ok {
             ex.hashMap[chunk.checkSum] = make([]*Chunk, 0)
         }
-        ex.hashMap[chunk.checkSum] = append(ex.hashMap[chunk.checkSum], &chunk)
+        ex.hashMap[chunk.checkSum] = append(ex.hashMap[chunk.checkSum], &remoteChunks[idx])
     }
 
     return ex, nil
 }
 
-func (sf *SourceFile) GetCurrentSW() []byte {
-    if (sf.slidingWin.l_idx - sf.slidingWin.k_idx + 1) != CHUNK_SIZE {
+func (sw *SlidingWindow) GetBuffer() []byte {
+    if (sw.l_idx - sw.k_idx + 1) != CHUNK_SIZE {
         panic(ErrSWSize)
     }
-    return sf.slidingWin.buffer[sf.slidingWin.k_idx : sf.slidingWin.l_idx + 1]
+    return sw.buffer[sw.k_idx : sw.l_idx + 1]
 }
 
 // copy pasted from https://stackoverflow.com/questions/37334119/how-to-delete-an-element-from-a-slice-in-golang
@@ -188,33 +190,17 @@ func RemoveIndex(s []*Chunk, index int) []*Chunk {
 
 func (ex RsyncExchange) Search() (response Response) {
     var packetAData []byte
-    var err error
-    var offset uint64 = 1
+    var err error = nil
 SearchLoop:
-    for ;; err = ex.sourceFile.slidingWin.roll(offset){
-        
-        offset = 1
-        // ensures that we always have bytes in the buffer to roll 
-        if err == ErrSWStuck {
-            n, read_err := ex.sourceFile.Read(true)
-            if n == 0 && read_err == io.EOF {
-                // search completed
-                break;
-            } else {
-                // otherwise we would do a repeted search
-                continue;
-            }
-        }
-
+    for ; err == nil; {
         // check if current checksum is entry in the hashmap
         if res, ok := ex.hashMap[ex.sourceFile.slidingWin.checkSum]; ok {
-            
             // linear search hashmap value at found key
             for idx, chunk := range res {
 
                 // check if candidate has the same strong hash as the window
-                if chunk.strongHash == md5.Sum(ex.sourceFile.GetCurrentSW()) {
-                  
+                if chunk.strongHash == md5.Sum(ex.sourceFile.slidingWin.GetBuffer()) {
+                    
                     // empty the type A buffer into a packet and 
                     // append it to reonstruction header
                     if len(packetAData) > 0 {
@@ -234,15 +220,17 @@ SearchLoop:
                     })
 
 
-                    offset = CHUNK_SIZE
                     // remove chunk from hashmap value list
                     // TODO optimize this ugly thing
+
                     ex.hashMap[ex.sourceFile.slidingWin.checkSum] = RemoveIndex(res, idx)
+                    err = ex.sourceFile.Next(B_BLOCK)                   
                     continue SearchLoop
                 }
+                fmt.Fprintf(os.Stderr, "Checksum matched but strongHash didn't")
+                fmt.Fprintf(os.Stderr, "%v", chunk)
             }
             // TODO replace with acutal log, bad way to keep track of things
-            // fmt.Fprintf(os.Stderr, "Checksum matched but strongHash didn't")
         }
 
         // TODO optimize this, appending every byte..
@@ -257,7 +245,30 @@ SearchLoop:
             })
             packetAData = packetAData[:0]
         }
+        err = ex.sourceFile.Next(A_BLOCK)                   
     }
+
+    if err == ErrSWSizeRem {
+        packetAData = append(packetAData, ex.sourceFile.slidingWin.buffer[ex.sourceFile.slidingWin.k_idx + 1 :]...)
+        for ; len(packetAData) > 0; {
+            var dim int
+            
+            if len(packetAData) < CHUNK_SIZE {
+                dim = len(packetAData)
+            } else {
+                dim = CHUNK_SIZE
+            }
+
+            response = append(response, ResponsePacket{
+                A_BLOCK,
+                packetAData[:dim],
+            })
+            packetAData = packetAData[dim :]
+        }
+    }   
+
+    // TODO continue to search and append remaining bytes like [Chunk][Chunk][rem]
+    // rem will not be added from the loop above
     return response
 }
 
@@ -290,7 +301,7 @@ func CreateSourceFile(filePath string) (SourceFile) {
 func (sf *SourceFile) Read(resetWindowBounds bool) (int, error) {
     var newBuf [4 * CHUNK_SIZE]byte
     copy(newBuf[:], sf.slidingWin.buffer[sf.slidingWin.k_idx:])
-    dif := sf.slidingWin.cap - sf.slidingWin.k_idx - 1
+    dif := sf.slidingWin.cap - sf.slidingWin.k_idx
     n, err := sf.reader.Read(newBuf[dif:])
     sf.slidingWin.buffer = newBuf
     sf.slidingWin.readBytes += uint64(n)
@@ -302,14 +313,55 @@ func (sf *SourceFile) Read(resetWindowBounds bool) (int, error) {
     return n, err
 }
 
-func (sw *SlidingWindow) roll(offset uint64) (err error) {
-    // check upper bound would be higher then we need to read more
-    if sw.cap <= (sw.l_idx + offset) {
-        return ErrSWStuck
+func (sw *SlidingWindow) checkStuck(respType ResponseType) (err error) {
+    offset_map := map[ResponseType]uint64{
+        A_BLOCK : 1,
+        B_BLOCK : CHUNK_SIZE,
     }
 
-    sw.k_idx+=offset;
-    sw.l_idx+=offset;
+    if sw.cap <= (sw.l_idx + offset_map[respType]) {
+        return ErrSWSize
+    }
+    return nil
+}
+
+func (sf *SourceFile) Next(respType ResponseType) (err error) {
+    err = sf.slidingWin.checkStuck(respType)
+
+    if err == ErrSWSize {
+        sf.Read(true)
+    }
+
+    switch respType {
+    case A_BLOCK :        
+        err = sf.slidingWin.roll()
+    case B_BLOCK :
+        err = sf.slidingWin.rollChunk()
+    }
+    return err 
+}
+
+func (sw *SlidingWindow) rollChunk() (error) {
+    if sw.checkStuck(B_BLOCK) == ErrSWSize {
+        if sw.cap != sw.l_idx + 1 {
+            return ErrSWSizeRem
+        }
+        return ErrSWSizeNoData
+    }
+    sw.k_idx += CHUNK_SIZE
+    sw.l_idx += CHUNK_SIZE
+    sw.checkSum, sw.a_sum, sw.b_sum = NewCheckSum(sw.GetBuffer())
+    return nil
+}
+
+func (sw *SlidingWindow) roll() (error) {
+    // check upper bound would be higher then we need to read more
+    if sw.checkStuck(A_BLOCK) == ErrSWSize {
+        return ErrSWSizeNoData
+    }
+
+    sw.k_idx++;
+    sw.l_idx++;
 
     sw.a_sum = (sw.a_sum - uint64(sw.buffer[sw.k_idx - 1]) +
                 uint64(sw.buffer[sw.l_idx])) % MOD2_16
@@ -347,9 +399,8 @@ func (rf RemoteFile) String() string {
 
 func (sf SourceFile) String() string {
     return fmt.Sprintf(
-        "filesize : %v \n " + 
-        "\tSliding Window\n %v",
-        sf.fileSize, sf.slidingWin,
+        "filesize : %v \n ",
+        sf.fileSize,
     )
 }   
 
