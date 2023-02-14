@@ -249,7 +249,7 @@ SearchLoop:
     }
 
     if err == ErrSWSizeRem {
-        packetAData = append(packetAData, ex.sourceFile.slidingWin.buffer[ex.sourceFile.slidingWin.k_idx + 1 :]...)
+        packetAData = append(packetAData, ex.sourceFile.slidingWin.buffer[ex.sourceFile.slidingWin.l_idx + 1 : ex.sourceFile.slidingWin.cap]...)
         for ; len(packetAData) > 0; {
             var dim int
             
@@ -430,8 +430,9 @@ func (resp ResponseType) String() string {
 func (packet ResponsePacket) String() string {
     return fmt.Sprintf(
         "Block Type : %v \n " +
-        "Data       : %v \n ",
-         packet.blockType, packet.data,
+        "Data       : %v \n " +
+        "Size       : %v \n " ,
+         packet.blockType, packet.data, len(packet.data),
      )
 }
 
