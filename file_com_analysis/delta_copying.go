@@ -12,6 +12,7 @@ import (
 
 type RemoteFile struct {
 	file        *os.File
+    filePath    string
 
 	chunkList   []Chunk
 	chunkCount  uint64
@@ -85,7 +86,7 @@ var(
     ErrNoFile       = errors.New("No file bound to the type!")
     ErrSWStuck      = errors.New("No more bytes to slide!")
     ErrSWSize       = errors.New("Sliding window size is not equal to CHUNK_SIZE!")
-    ErrSWSizeRem    = errors.New("Sliding window is stuck but still has data to be read!")
+    ErrSWSizeRem   = errors.New("Sliding window is stuck but still has data to be read!")
     ErrSWSizeNoData = io.EOF
 )
 
@@ -115,6 +116,7 @@ func CreateRemoteFile(filePath string) (RemoteFile) {
 	var rf RemoteFile
     var err error
 
+    rf.filePath = filePath
 	rf.file, err = os.Open(filePath)
 	if err != nil {
 		panic(err)
@@ -166,7 +168,7 @@ func CreateRsyncExchange (sf *SourceFile, remoteChunks []Chunk) (RsyncExchange, 
         if _, ok := ex.hashMap[chunk.checkSum]; !ok {
             ex.hashMap[chunk.checkSum] = make([]*Chunk, 0)
         }
-        ex.hashMap[chunk.checkSum] = append(ex.hashMap[chunk.checkSum], &remoteChunks[idx])
+        ex.hashMap[chunk.checkSum] = append(ex.hashMap[chunk.checkSum], &ex.chunkList[idx])
     }
 
     return ex, nil
@@ -259,6 +261,7 @@ SearchLoop:
                 dim = CHUNK_SIZE
             }
 
+
             response = append(response, ResponsePacket{
                 A_BLOCK,
                 packetAData[:dim],
@@ -266,6 +269,7 @@ SearchLoop:
             packetAData = packetAData[dim :]
         }
     }   
+
 
     // TODO continue to search and append remaining bytes like [Chunk][Chunk][rem]
     // rem will not be added from the loop above
@@ -357,9 +361,13 @@ func (sw *SlidingWindow) rollChunk() (error) {
 func (sw *SlidingWindow) roll() (error) {
     // check upper bound would be higher then we need to read more
     if sw.checkStuck(A_BLOCK) == ErrSWSize {
+        if sw.cap == sw.l_idx + 1 {
+            // we have no more data to read
+            sw.l_idx = sw.k_idx
+            return ErrSWSizeRem
+        }
         return ErrSWSizeNoData
     }
-
     sw.k_idx++;
     sw.l_idx++;
 
@@ -370,7 +378,46 @@ func (sw *SlidingWindow) roll() (error) {
     sw.checkSum = CheckSum(sw.a_sum) + MOD2_16 * CheckSum(sw.b_sum)
 
     return nil
-} 
+}
+
+func checkErr(err error) {
+    if err != nil {
+        panic(err)
+    }
+}
+
+func (rf *RemoteFile) WriteSyncedFile(response *Response, filePath string) error {
+    syncedFile, err := os.Create(filePath)
+    checkErr(err)
+    rf.file, err = os.Open(rf.filePath)
+    checkErr(err)
+
+    defer rf.file.Close()
+    defer syncedFile.Close()
+
+    for idx, _:= range *response {
+        var responsePack *ResponsePacket = &((*response)[idx])
+        switch responsePack.blockType {
+        case A_BLOCK :
+            syncedFile.Write(responsePack.data)
+        case B_BLOCK :
+            chunkIdx := binary.LittleEndian.Uint64(responsePack.data)
+            chunk := &rf.chunkList[chunkIdx]
+            _, err := rf.file.Seek(0, int(chunk.offset))
+
+            checkErr(err)
+            
+            buf := make([]byte, CHUNK_SIZE)
+            n, err := rf.file.Read(buf)
+            if n != CHUNK_SIZE {
+                panic(n)
+            }
+
+            syncedFile.Write(buf)
+        }
+    }
+    return nil
+}
 
 func (chunk Chunk) String() string {
     chunkStr := fmt.Sprintf(
