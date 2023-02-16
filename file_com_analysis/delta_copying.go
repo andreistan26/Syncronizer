@@ -380,7 +380,7 @@ func (sw *SlidingWindow) roll() (error) {
     return nil
 }
 
-func checkErr(err error) {
+func CheckErr(err error) {
     if err != nil {
         panic(err)
     }
@@ -388,9 +388,9 @@ func checkErr(err error) {
 
 func (rf *RemoteFile) WriteSyncedFile(response *Response, filePath string) error {
     syncedFile, err := os.Create(filePath)
-    checkErr(err)
+    CheckErr(err)
     rf.file, err = os.Open(rf.filePath)
-    checkErr(err)
+    CheckErr(err)
 
     defer rf.file.Close()
     defer syncedFile.Close()
@@ -405,7 +405,7 @@ func (rf *RemoteFile) WriteSyncedFile(response *Response, filePath string) error
             chunk := &rf.chunkList[chunkIdx]
             _, err := rf.file.Seek(0, int(chunk.offset))
 
-            checkErr(err)
+            CheckErr(err)
             
             buf := make([]byte, CHUNK_SIZE)
             n, err := rf.file.Read(buf)

@@ -3,6 +3,7 @@ package delta_copying
 import (
 	"fmt"
 	"testing"
+    "os"
 )
 
 
@@ -34,6 +35,8 @@ func TestFileCreate(t *testing.T) {
     
     t.Run("Perform a search", func(t *testing.T) {
         resp := ex.Search()
+
+        fmt.Printf("%v", resp)
 
         gotMap := map[ResponseType]int{
             A_BLOCK : 0,
@@ -142,6 +145,34 @@ func TestPerfectMatch(t *testing.T) {
     })
 }
 
+func TestReminder(t *testing.T) {
+    t.Run("1 Block + 128 bytes", func(t *testing.T) {
+        const default_path_src = "res/remTest/1_chunk_128_rem_src.sync"
+        const default_path_rem = "res/remTest/1_chunk_128_rem_rem.sync"
+        
+        rf := CreateRemoteFile(default_path_rem)
+        sf := CreateSourceFile(default_path_src)
+        ex, _ := CreateRsyncExchange(&sf, rf.chunkList)
+
+        ex.Search()
+    })
+}
+
+func TestWriteFile(t *testing.T) {
+    t.Run("2 Chunks + 128 bytes", func(t *testing.T) {
+        const hostPath = "res/writeFile/2_chunk_128_src.sync"
+        const remPath = "res/writeFile/2_chunk_128_rem.sync"
+
+        rf := CreateRemoteFile(remPath)
+        sf := CreateSourceFile(hostPath)
+        ex, _ := CreateRsyncExchange(&sf, rf.chunkList)
+        
+        resp := ex.Search()
+
+        rf.WriteSyncedFile(&resp, "res/writeFile/2_chunk_128_res.sync")
+    })
+}
+
 
 func AssertPackageTypeByCount(t testing.TB, resp Response, gotMap, wantMap map[ResponseType]int) {
     t.Helper()
@@ -162,3 +193,25 @@ func AssertPackageTypeByCount(t testing.TB, resp Response, gotMap, wantMap map[R
         }
     }
 }
+
+func MakeSearchTestHelper(t testing.TB, sourceFilePath, remoteFilePath, resFilePath, logFilePath string) (sf SourceFile, rf RemoteFile, resp Response) {
+    t.Helper()
+
+    sf = CreateSourceFile(sourceFilePath)
+    rf = CreateRemoteFile(remoteFilePath)
+    ex, _ := CreateRsyncExchange(&sf, rf.chunkList)
+    defer sf.file.Close()
+    resp = ex.Search()
+
+    if logFilePath != "" {
+        logFile, err := os.Create(logFilePath)
+        if err == nil {
+            t.Fatal(err)
+        }
+        logFile.WriteString(sf.String())
+        logFile.WriteString(rf.String())
+        logFile.WriteString(resp.String())
+    }
+
+    return sf, rf, resp
+} 
