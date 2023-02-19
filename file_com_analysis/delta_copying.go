@@ -212,7 +212,7 @@ SearchLoop:
 							A_BLOCK,
 							packetAData,
 						})
-						packetAData = packetAData[:0]
+						packetAData = nil
 					}
 
 					// construct the type B packet
@@ -246,7 +246,7 @@ SearchLoop:
 				A_BLOCK,
 				packetAData,
 			})
-			packetAData = packetAData[:0]
+			packetAData = nil
 		}
 		err = ex.sourceFile.Next(A_BLOCK)
 	}
@@ -303,7 +303,7 @@ func CreateSourceFile(filePath string) SourceFile {
 // reads next 3 * CHUNK_SIZE bytes from file and resets k and l
 func (sf *SourceFile) Read(resetWindowBounds bool) (int, error) {
 	var newBuf [4 * CHUNK_SIZE]byte
-	copy(newBuf[:], sf.slidingWin.buffer[sf.slidingWin.k_idx:])
+	copy(newBuf[:], sf.slidingWin.buffer[sf.slidingWin.k_idx:sf.slidingWin.cap])
 	dif := sf.slidingWin.cap - sf.slidingWin.k_idx
 	n, err := sf.reader.Read(newBuf[dif:])
 	sf.slidingWin.buffer = newBuf
@@ -355,7 +355,6 @@ func (sw *SlidingWindow) rollChunk() error {
 }
 
 func (sw *SlidingWindow) roll() error {
-	// check upper bound would be higher then we need to read more
 	if sw.checkStuck(A_BLOCK) == ErrSWSize {
 		sw.l_idx = sw.k_idx
 		return ErrSWSizeRem
