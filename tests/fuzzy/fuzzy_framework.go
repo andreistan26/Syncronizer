@@ -1,6 +1,7 @@
 package fuzzy
 
 import (
+	"crypto/md5"
 	"crypto/rand"
 	"encoding/binary"
 	"encoding/json"
@@ -11,6 +12,7 @@ import (
 	mrand "math/rand"
 	"os"
 	"path"
+	"reflect"
 	"testing"
 	"time"
 
@@ -46,16 +48,17 @@ type FuzzyTest struct {
 	response file_level.Response
 }
 
-const DEFAULT_FUZZY_PATH = "../test_data/fuzzy"
+const DEFAULT_FUZZY_PATH = "test_data/fuzzy"
 
-func RunFuzzyTest(jsonFilePath string, t testing.TB) {
+func RunFuzzyTest(jsonFilePath string, t testing.TB) (err error) {
 	t.Helper()
 
 	var jsonData FuzzyTestList
 
 	fileData, err := ioutil.ReadFile(jsonFilePath)
 	if err != nil {
-		t.Fatal(err)
+		t.Errorf("JSON file does not exist at path [%s]", jsonFilePath)
+		return err
 	}
 
 	json.Unmarshal(fileData, &jsonData)
@@ -64,6 +67,7 @@ func RunFuzzyTest(jsonFilePath string, t testing.TB) {
 		os.MkdirAll(dirPath, os.ModePerm)
 		// unsafe but unlikely
 		for idx := 0; idx < int(testSpec.Iterations); idx++ {
+			// go func(dirPath string, idx int, testSpec FuzzyTestOptions) {
 			baseName := path.Join(dirPath, fmt.Sprintf("%s_%d", testSpec.TestName, idx))
 			srcPath := fmt.Sprintf("%s_src.sync", baseName)
 			srcFileSize := testSpec.getRandomFileSize()
@@ -83,9 +87,11 @@ func RunFuzzyTest(jsonFilePath string, t testing.TB) {
 			fuzzyUnit.remoteFile.Close()
 
 			MakeSearchTestHelper(t, fuzzyUnit.sourceFile.Name(), fuzzyUnit.remoteFile.Name(),
-				resPath, logPath, fuzzyUnit.response)
+				resPath, logPath, &fuzzyUnit.response)
+			// }(dirPath, idx, testSpec)
 		}
 	}
+	return nil
 }
 
 func (test FuzzyTestOptions) getRandomFileSize() int64 {
@@ -176,17 +182,18 @@ func CheckErr(err error) {
 
 // Refactor so that log file is opened since the creation of the test
 func MakeSearchTestHelper(t testing.TB, sourceFilePath, remoteFilePath, resFilePath, logFilePath string,
-	creationResp file_level.Response) {
+	creationResp *file_level.Response) {
 	t.Helper()
 
 	sf := file_level.CreateSourceFile(sourceFilePath)
 	rf := file_level.CreateRemoteFile(remoteFilePath)
 	ex, _ := file_level.CreateRsyncExchange(&sf, rf.ChunkList)
 	defer sf.File.Close()
+	defer rf.File.Close()
 	resp := ex.Search()
 	rf.WriteSyncedFile(&resp, resFilePath, false)
 
-	if logFilePath != "" {
+	if logFilePath != "" && !AssertFileHash(t, sf.File, rf.File) {
 		logFile, err := os.Create(logFilePath)
 		if err != nil {
 			t.Fatal(err)
@@ -196,5 +203,41 @@ func MakeSearchTestHelper(t testing.TB, sourceFilePath, remoteFilePath, resFileP
 		logFile.WriteString(resp.String())
 		logFile.WriteString("\nCreation Response\n")
 		logFile.WriteString(creationResp.String())
+	} else {
+		os.Remove(sf.File.Name())
+		os.Remove(rf.File.Name())
+		os.Remove(resFilePath)
 	}
+}
+
+func AssertFileHash(t testing.TB, sourcePath, remotePath *os.File) bool {
+	t.Helper()
+
+	assertHashErrCheck := func(file *os.File) []byte {
+		hash1, err := calculateFileHash(t, sourcePath)
+		if err != nil {
+			t.Errorf("file path error when trying to calculate hash")
+		}
+		return hash1
+	}
+	hash1 := assertHashErrCheck(sourcePath)
+	hash2 := assertHashErrCheck(sourcePath)
+
+	if !reflect.DeepEqual(hash1, hash2) {
+		t.Errorf("hash of files is not equal [%s, %s]", sourcePath.Name(), remotePath.Name())
+		return false
+	}
+	return true
+}
+
+func calculateFileHash(t testing.TB, file *os.File) ([]byte, error) {
+	t.Helper()
+
+	file.Seek(0, 0)
+	hash := md5.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		t.Errorf("calculating hash error : %s", err.Error())
+		return nil, err
+	}
+	return hash.Sum(nil), nil
 }

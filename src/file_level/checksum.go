@@ -74,11 +74,12 @@ func NewCheckSum(bytes []byte) (sum CheckSum, a_sum, b_sum uint32) {
 	return sum, a_sum, b_sum
 }
 
+var offset_map = [2]uint64{
+	A_BLOCK: 1,
+	B_BLOCK: CHUNK_SIZE,
+}
+
 func (sw *SlidingWindow) CheckStuck(respType ResponseType) (err error) {
-	offset_map := map[ResponseType]uint64{
-		A_BLOCK: 1,
-		B_BLOCK: CHUNK_SIZE,
-	}
 
 	if sw.cap <= (sw.l_idx + offset_map[respType]) {
 		return ErrSWSize
