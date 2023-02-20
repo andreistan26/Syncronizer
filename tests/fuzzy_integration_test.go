@@ -8,6 +8,6 @@ import (
 
 func TestFuzzySample(t *testing.T) {
 	t.Run("Sample test", func(t *testing.T) {
-		fuzzy.RunFuzzyTest("tests/test_data/json/sample_fuzzy.json", t)
+		fuzzy.RunFuzzyTest("test_data/json/sample_fuzzy.json", t)
 	})
 }

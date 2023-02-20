@@ -184,7 +184,7 @@ func MakeSearchTestHelper(t testing.TB, sourceFilePath, remoteFilePath, resFileP
 	ex, _ := file_level.CreateRsyncExchange(&sf, rf.ChunkList)
 	defer sf.File.Close()
 	resp := ex.Search()
-	rf.WriteSyncedFile(&resp, resFilePath)
+	rf.WriteSyncedFile(&resp, resFilePath, false)
 
 	if logFilePath != "" {
 		logFile, err := os.Create(logFilePath)

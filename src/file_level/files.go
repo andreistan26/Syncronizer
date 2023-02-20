@@ -111,7 +111,11 @@ func CreateSourceFile(filePath string) SourceFile {
 	sf.slidingWin.l_idx = CHUNK_SIZE - 1
 	return sf
 }
-func (rf *RemoteFile) WriteSyncedFile(response *Response, filePath string) error {
+func (rf *RemoteFile) WriteSyncedFile(response *Response, filePath string, replace bool) error {
+	if rf.FilePath == filePath {
+		filePath += ".tmp"
+	}
+
 	syncedFile, err := os.Create(filePath)
 	CheckErr(err)
 	rf.File, err = os.Open(rf.FilePath)
@@ -140,6 +144,10 @@ func (rf *RemoteFile) WriteSyncedFile(response *Response, filePath string) error
 
 			syncedFile.Write(buf)
 		}
+	}
+	if replace {
+		os.Remove(rf.FilePath)
+		os.Rename(filePath, rf.FilePath)
 	}
 	return nil
 }

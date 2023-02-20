@@ -161,7 +161,7 @@ func TestWriteFile(t *testing.T) {
 			file_level.B_BLOCK: 2,
 		})
 
-		rf.WriteSyncedFile(&resp, "test_data/writeFile/2_chunk_128_res.sync")
+		rf.WriteSyncedFile(&resp, "test_data/writeFile/2_chunk_128_res.sync", false)
 	})
 }
 
