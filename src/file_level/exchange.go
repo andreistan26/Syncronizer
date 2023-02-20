@@ -9,8 +9,8 @@ import (
 
 type RsyncExchange struct {
 	sourceFile *SourceFile
-	chunkList  []Chunk
-	hashMap    HashMap
+	ChunkList  []Chunk
+	HashMap    HashMap
 }
 
 type HashMap map[CheckSum][]*Chunk
@@ -19,12 +19,12 @@ type HashMap map[CheckSum][]*Chunk
 func CreateRsyncExchange(sf *SourceFile, remoteChunks []Chunk) (RsyncExchange, error) {
 	ex := RsyncExchange{
 		sourceFile: sf,
-		chunkList:  remoteChunks,
-		hashMap:    make(HashMap),
+		ChunkList:  remoteChunks,
+		HashMap:    make(HashMap),
 	}
 
-	for idx, _ := range remoteChunks {
-		ex.hashMap[ex.chunkList[idx].checkSum] = append(ex.hashMap[ex.chunkList[idx].checkSum], &ex.chunkList[idx])
+	for idx := range remoteChunks {
+		ex.HashMap[ex.ChunkList[idx].CheckSum] = append(ex.HashMap[ex.ChunkList[idx].CheckSum], &ex.ChunkList[idx])
 	}
 
 	return ex, nil
@@ -46,7 +46,7 @@ SearchLoop:
 	for err == nil {
 
 		// check if current checksum is entry in the hashmap
-		if res, _ := ex.hashMap[ex.sourceFile.slidingWin.checkSum]; len(res) > 0 {
+		if res := ex.HashMap[ex.sourceFile.slidingWin.checkSum]; len(res) > 0 {
 			// linear search hashmap value at found key
 			for idx, chunk := range res {
 
@@ -73,12 +73,12 @@ SearchLoop:
 					// remove chunk from hashmap value list
 					// TODO optimize this ugly thing
 
-					ex.hashMap[ex.sourceFile.slidingWin.checkSum] = RemoveIndex(res, idx)
+					ex.HashMap[ex.sourceFile.slidingWin.checkSum] = RemoveIndex(res, idx)
 					err = ex.sourceFile.Next(B_BLOCK)
 					continue SearchLoop
 				}
 			}
-			fmt.Fprintf(os.Stderr, "Checksum matched but strongHash didn't, %v vals\n", ex.hashMap[ex.sourceFile.slidingWin.checkSum])
+			fmt.Fprintf(os.Stderr, "Checksum matched but strongHash didn't, %v vals\n", ex.HashMap[ex.sourceFile.slidingWin.checkSum])
 			// TODO replace with acutal log, bad way to keep track of things
 		}
 

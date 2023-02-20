@@ -1,4 +1,4 @@
-package checksum
+package file_level
 
 import (
 	"errors"
@@ -14,13 +14,13 @@ const (
 )
 
 var (
-	ErrSWStuck   = errors.New("No more bytes to slide!")
-	ErrSWSize    = errors.New("Sliding window size is not equal to CHUNK_SIZE!")
-	ErrSWSizeRem = errors.New("Sliding window is stuck but still has data to be read!")
+	ErrSWStuck   = errors.New("no more bytes to slide")
+	ErrSWSize    = errors.New("sliding window size is not equal to CHUNK_SIZE")
+	ErrSWSizeRem = errors.New("sliding window is stuck but still has data to be read")
 )
 
 type Chunk struct {
-	checkSum   CheckSum
+	CheckSum   CheckSum
 	strongHash [16]byte
 
 	offset uint64
@@ -74,7 +74,7 @@ func NewCheckSum(bytes []byte) (sum CheckSum, a_sum, b_sum uint32) {
 	return sum, a_sum, b_sum
 }
 
-func (sw *SlidingWindow) checkStuck(respType ResponseType) (err error) {
+func (sw *SlidingWindow) CheckStuck(respType ResponseType) (err error) {
 	offset_map := map[ResponseType]uint64{
 		A_BLOCK: 1,
 		B_BLOCK: CHUNK_SIZE,
@@ -86,8 +86,8 @@ func (sw *SlidingWindow) checkStuck(respType ResponseType) (err error) {
 	return nil
 }
 
-func (sw *SlidingWindow) rollChunk() error {
-	if sw.checkStuck(B_BLOCK) == ErrSWSize {
+func (sw *SlidingWindow) RollChunk() error {
+	if sw.CheckStuck(B_BLOCK) == ErrSWSize {
 		return ErrSWSizeRem
 	}
 	sw.k_idx += CHUNK_SIZE
@@ -96,8 +96,8 @@ func (sw *SlidingWindow) rollChunk() error {
 	return nil
 }
 
-func (sw *SlidingWindow) roll() error {
-	if sw.checkStuck(A_BLOCK) == ErrSWSize {
+func (sw *SlidingWindow) Roll() error {
+	if sw.CheckStuck(A_BLOCK) == ErrSWSize {
 		sw.l_idx = sw.k_idx
 		return ErrSWSizeRem
 	}
@@ -124,7 +124,7 @@ func (chunk Chunk) String() string {
 			"md5 hash : %v \n "+
 			"offset   : %v \n "+
 			"size     : %v \n ",
-		chunk.checkSum, chunk.strongHash,
+		chunk.CheckSum, chunk.strongHash,
 		chunk.offset, chunk.size,
 	)
 	return chunkStr

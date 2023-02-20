@@ -1,4 +1,4 @@
-package response
+package file_level
 
 import "fmt"
 
@@ -10,8 +10,8 @@ const (
 )
 
 type ResponsePacket struct {
-	blockType ResponseType
-	data      []byte
+	BlockType ResponseType
+	Data      []byte
 }
 
 type Response []ResponsePacket
@@ -21,7 +21,7 @@ func (packet ResponsePacket) String() string {
 		"Block Type : %v \n "+
 			"Data       : %v \n "+
 			"Size       : %v \n ",
-		packet.blockType, packet.data, len(packet.data),
+		packet.BlockType, packet.Data, len(packet.Data),
 	)
 }
 
