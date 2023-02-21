@@ -13,6 +13,7 @@ import (
 	"os"
 	"path"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 
@@ -61,35 +62,40 @@ func RunFuzzyTest(jsonFilePath string, t testing.TB) (err error) {
 		return err
 	}
 
+	var wg sync.WaitGroup
+
 	json.Unmarshal(fileData, &jsonData)
 	for _, testSpec := range jsonData.FuzzyTests {
 		dirPath := path.Join(DEFAULT_FUZZY_PATH, testSpec.TestName)
 		os.MkdirAll(dirPath, os.ModePerm)
 		// unsafe but unlikely
 		for idx := 0; idx < int(testSpec.Iterations); idx++ {
-			// go func(dirPath string, idx int, testSpec FuzzyTestOptions) {
-			baseName := path.Join(dirPath, fmt.Sprintf("%s_%d", testSpec.TestName, idx))
-			srcPath := fmt.Sprintf("%s_src.sync", baseName)
-			srcFileSize := testSpec.getRandomFileSize()
-			remotePath := fmt.Sprintf("%s_rem.sync", baseName)
-			resPath := fmt.Sprintf("%s_res.sync", baseName)
-			logPath := fmt.Sprintf("%s.log", baseName)
-			fuzzyUnit := FuzzyTest{
-				testOptions: testSpec,
-			}
-			fuzzyUnit.CreateRandomDataFile(srcPath, srcFileSize)
-			fuzzyUnit.CopyCreateFile(remotePath)
+			wg.Add(1)
+			go func(dirPath string, idx int, testSpec FuzzyTestOptions) {
+				defer wg.Done()
+				baseName := path.Join(dirPath, fmt.Sprintf("%s_%d", testSpec.TestName, idx))
+				srcPath := fmt.Sprintf("%s_src.sync", baseName)
+				srcFileSize := testSpec.getRandomFileSize()
+				remotePath := fmt.Sprintf("%s_rem.sync", baseName)
+				resPath := fmt.Sprintf("%s_res.sync", baseName)
+				logPath := fmt.Sprintf("%s.log", baseName)
+				fuzzyUnit := FuzzyTest{
+					testOptions: testSpec,
+				}
+				fuzzyUnit.CreateRandomDataFile(srcPath, srcFileSize)
+				fuzzyUnit.CopyCreateFile(remotePath)
 
-			// mutate source file
-			fuzzyUnit.MutateSourceFile()
+				// mutate source file
+				fuzzyUnit.MutateSourceFile()
 
-			fuzzyUnit.sourceFile.Close()
-			fuzzyUnit.remoteFile.Close()
+				fuzzyUnit.sourceFile.Close()
+				fuzzyUnit.remoteFile.Close()
 
-			MakeSearchTestHelper(t, fuzzyUnit.sourceFile.Name(), fuzzyUnit.remoteFile.Name(),
-				resPath, logPath, &fuzzyUnit.response)
-			// }(dirPath, idx, testSpec)
+				MakeSearchTestHelper(t, fuzzyUnit.sourceFile.Name(), fuzzyUnit.remoteFile.Name(),
+					resPath, logPath, &fuzzyUnit.response)
+			}(dirPath, idx, testSpec)
 		}
+		wg.Wait()
 	}
 	return nil
 }
