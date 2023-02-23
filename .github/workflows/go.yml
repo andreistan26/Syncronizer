@@ -14,7 +14,7 @@ jobs:
       - name: Install dependencies
         run: go get .
       - name: Build
-        run: go build -v main.go
+        run: go build -v apps/sync/sync.go
       - name: Unit tests
         run: go test tests/file_level_test.go
       - name: Fuzzy integration testing
