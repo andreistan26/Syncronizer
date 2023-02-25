@@ -4,66 +4,45 @@ import (
 	"errors"
 	"os"
 
+	"github.com/andreistan26/sync/src/options"
 	"github.com/spf13/cobra"
 )
 
-type ExchangeType int
-
-const (
-	LOCAL_EX ExchangeType = iota
-	TCP_EX
-)
-
-type AddressPath struct {
-	User     string
-	Address  string
-	Filepath string
-}
-
-type Options struct {
-	exType ExchangeType
-	Source AddressPath
-	Dest   AddressPath
-
-	Verbose  bool
-	IsServer bool
-}
-
-func CreateMainCommand() (*cobra.Command, *Options) {
-	options := &Options{}
+func CreateMainCommand() (*cobra.Command, *options.Options) {
+	opts := &options.Options{}
 	command := &cobra.Command{
 		Use:   `sync [COMMAND]`,
 		Short: `sync is a file syncronization tool`,
 	}
-	return command, options
+	return command, opts
 }
 
-func CreateSendCommand(options *Options) *cobra.Command {
+func CreateSendCommand(opts *options.Options) *cobra.Command {
 	command := &cobra.Command{
-		Use:   `send [OPTIONS] SRC DEST`,
+		Use:   `send [opts] SRC DEST`,
 		Short: `send files(SRC) to syncronize with a target(DEST)`,
-		Args:  ArgsValidator(options),
+		Args:  ArgsValidator(opts),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return Execute(options)
+			return Execute(opts)
 		},
 	}
 
-	command.Flags().BoolVarP(&options.Verbose, "verbose", "v", true, "increase verbosity")
+	command.Flags().BoolVarP(&opts.Verbose, "verbose", "v", true, "increase verbosity")
 	return command
 }
 
-func CreateServerCommand(options *Options) *cobra.Command {
+func CreateServerCommand(opts *options.Options) *cobra.Command {
 	command := &cobra.Command{
 		Use:   `server [OPTIONS]`,
 		Short: `starts a server that listens for clients`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return ExecuteStartServer(options)
+			return ExecuteStartServer(opts)
 		},
 	}
 	return command
 }
 
-func ArgsValidator(opts *Options) func(cmd *cobra.Command, args []string) error {
+func ArgsValidator(opts *options.Options) func(cmd *cobra.Command, args []string) error {
 	return func(cmd *cobra.Command, args []string) (err error) {
 		if len(args) < 2 {
 			return errors.New("you need to provide a source and a destination")

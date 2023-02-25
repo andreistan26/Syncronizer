@@ -132,7 +132,7 @@ func (rf *RemoteFile) WriteSyncedFile(response *Response, filePath string, repla
 		case B_BLOCK:
 			chunkIdx := binary.LittleEndian.Uint64(responsePack.Data)
 			chunk := &rf.ChunkList[chunkIdx]
-			_, err := rf.File.Seek(int64(chunk.offset), 0)
+			_, err := rf.File.Seek(int64(chunk.Offset), 0)
 
 			CheckErr(err)
 

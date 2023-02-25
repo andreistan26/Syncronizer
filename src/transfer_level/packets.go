@@ -1,5 +1,9 @@
 package transport
 
+import (
+	"fmt"
+)
+
 // first request client ---> server
 type InitialFileRequest struct {
 	Filename string
@@ -29,10 +33,33 @@ type StatusMessages struct {
 	Message string
 }
 
-// type SyncPacket interface {
-// }
+func (sm StatusMessages) String() (str string) {
+	return fmt.Sprintf(
+		"Status: <%d>, Message <%s>\n",
+		sm.Status, sm.Message,
+	)
+}
 
-// type Packet struct {
-// 	PacketType PacketType
-// 	Payload    SyncPacket
-// }
+func (ifr InitialFileRequest) String() (str string) {
+	return fmt.Sprintf(
+		"Filename: <%v>, MD5 <%v>\n",
+		ifr.Filename, ifr.Md5sum,
+	)
+}
+
+func (status StatusResponse) String() (str string) {
+	switch status {
+	case STATUS_FILE_SYNCED:
+		return "STATUS_FILE_SYNCED"
+	case STATUS_FILE_EXISTS:
+		return "STATUS_FILE_EXISTS"
+	case STATUS_REQUEST_CHUNKS:
+		return "STATUS_REQUEST_CHUNKS"
+	case STATUS_SENDING_CHUNKS:
+		return "STATUS_SENDING_CHUNKS"
+	case STATUS_SERVER_ERROR:
+		return "STATUS_SERVER_ERROR"
+	default:
+		return fmt.Sprintf("%d", status)
+	}
+}

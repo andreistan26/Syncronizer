@@ -1,47 +1,42 @@
 package transport
 
 import (
-	"encoding/gob"
 	"fmt"
+	"log"
 	"net"
 	"os"
 
 	"github.com/andreistan26/sync/src/file_level"
+	"github.com/andreistan26/sync/src/options"
 )
 
-func SendFile(filename string, addr string) error {
-	sourceFile := file_level.CreateSourceFile(filename)
+func SendFile(opts *options.Options) error {
+	sourceFile := file_level.CreateSourceFile(opts.Source.Filepath)
 
-	netConn, err := net.Dial("tcp4", addr)
+	netConn, err := net.Dial("tcp4", opts.Dest.Address)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		panic(err)
 	}
 
-	conn := SyncConn{
-		Encoder: gob.NewEncoder(netConn),
-		Decoder: gob.NewDecoder(netConn),
-	}
+	conn := InitSyncConn(netConn)
 
-	md5sum, err := file_level.GetFileMD5(filename)
+	md5sum, err := file_level.GetFileMD5(opts.Source.Filepath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "%v\n", err)
+		log.Printf("Error occured when calculating md5 for file %v\n", err)
 		panic(err)
 	}
 
 	conn.Encode(InitialFileRequest{
-		Filename: filename,
+		Filename: opts.Dest.Filepath,
 		Md5sum:   md5sum,
 	})
-
-	fmt.Println(filename, " ", md5sum)
 
 	var statusMsg StatusMessages
 	conn.Decode(&statusMsg)
 
-	//TODO
 	if statusMsg.Status != STATUS_SENDING_CHUNKS {
-		fmt.Fprintf(os.Stderr, "TODO implement this")
+		log.Println(statusMsg)
 	}
 
 	var remoteChunkList []file_level.Chunk
@@ -59,5 +54,7 @@ func SendFile(filename string, addr string) error {
 	if statusMsg.Status == STATUS_FILE_SYNCED {
 		fmt.Println("File sync succesful!")
 	}
+
+	netConn.Close()
 	return nil
 }

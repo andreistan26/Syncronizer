@@ -1,4 +1,4 @@
-package cmd
+package options
 
 import (
 	"errors"
@@ -54,7 +54,7 @@ func (opts *Options) ParseArgument(arg []string) {
 		panic(err)
 	}
 
-	opts.exType, err = opts.Dest.ParseDest(arg[1])
+	opts.ExType, err = opts.Dest.ParseDest(arg[1])
 	if err != nil {
 		panic(err)
 	}

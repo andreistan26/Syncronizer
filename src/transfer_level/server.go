@@ -1,8 +1,8 @@
 package transport
 
 import (
-	"encoding/gob"
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"path"
@@ -14,8 +14,6 @@ import (
 type SyncServerTCP struct {
 	Addr    net.Addr
 	Listner net.Listener
-
-	//config
 }
 
 func StartServer(port int) (serv *SyncServerTCP, err error) {
@@ -23,7 +21,7 @@ func StartServer(port int) (serv *SyncServerTCP, err error) {
 	serv.Listner, err = net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
 
 	if err != nil {
-		fmt.Printf("%v", err)
+		log.Printf("Error occured when starting server : %v", err)
 	}
 	return serv, err
 }
@@ -32,16 +30,11 @@ func (serv *SyncServerTCP) Run() error {
 	for {
 		conn, err := serv.Listner.Accept()
 		if err != nil {
-			fmt.Printf("Got error %v when Accepting", err)
+			log.Printf("Got error %v when Accepting\n", err)
 		}
 
-		conn.Write([]byte("TCP connection established"))
 		fmt.Fprintf(os.Stderr, "TCP connection established with %v\n", conn.RemoteAddr().String())
-		syncConn := SyncConn{
-			Encoder: gob.NewEncoder(conn),
-			Decoder: gob.NewDecoder(conn),
-		}
-
+		syncConn := InitSyncConn(conn)
 		syncConn.HandleConnection()
 		conn.Close()
 	}
@@ -53,12 +46,12 @@ func (conn *SyncConn) HandleConnection() error {
 	initialFileRequest := &InitialFileRequest{}
 	err := conn.Decode(initialFileRequest)
 	if err != nil {
-		fmt.Println(initialFileRequest.Filename, " ", initialFileRequest.Md5sum)
+		log.Println(initialFileRequest.Filename, " ", initialFileRequest.Md5sum)
 		fmt.Printf("Got an error when trying to decode initial file request\n")
 		return err
 	}
 
-	// probe hash to see if it matches
+	// probe hash in order to check if the file is unmodified
 	md5, err := file_level.GetFileMD5(initialFileRequest.Filename)
 
 	// file exists, md5 crashed
@@ -77,18 +70,17 @@ func (conn *SyncConn) HandleConnection() error {
 
 	// files are the same
 	if reflect.DeepEqual(md5, initialFileRequest.Md5sum) {
-		// file exists
 		conn.Encode(StatusMessages{
 			Status:  STATUS_FILE_EXISTS,
 			Message: "File already exists",
 		})
+		return nil
 	}
 
-	// file exists, need to sync files
-
+	// file exists but is modified
 	conn.Encode(StatusMessages{
 		Status:  STATUS_SENDING_CHUNKS,
-		Message: "",
+		Message: "Sending Chunks",
 	})
 
 	// send chunks of data
@@ -97,17 +89,18 @@ func (conn *SyncConn) HandleConnection() error {
 
 	// waiting for reponse package
 	var response file_level.Response
-	conn.Decode(response)
+	conn.Decode(&response)
+	log.Printf("%v", response)
 	remoteFile.WriteSyncedFile(&response, initialFileRequest.Filename, true)
 
 	resultMD5, err := file_level.GetFileMD5(initialFileRequest.Filename)
 	if err != nil {
-		fmt.Fprintf(os.Stdout, "WTF")
+		log.Printf("Error occured when calculating md5 on final file, %v\n", err)
 	}
 	if reflect.DeepEqual(resultMD5, initialFileRequest.Md5sum) {
 		conn.Encode(StatusMessages{
 			Status:  STATUS_FILE_SYNCED,
-			Message: "",
+			Message: "file synced (msg from server)",
 		})
 	}
 	return nil

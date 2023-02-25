@@ -210,9 +210,9 @@ func MakeSearchTestHelper(t testing.TB, sourceFilePath, remoteFilePath, resFileP
 		logFile.WriteString("\nCreation Response\n")
 		logFile.WriteString(creationResp.String())
 	} else {
-		os.Remove(sf.File.Name())
-		os.Remove(rf.File.Name())
-		os.Remove(resFilePath)
+		// os.Remove(sf.File.Name())
+		// os.Remove(rf.File.Name())
+		// os.Remove(resFilePath)
 	}
 }
 

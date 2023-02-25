@@ -21,11 +21,11 @@ var (
 
 type Chunk struct {
 	CheckSum   CheckSum
-	strongHash [16]byte
+	StrongHash [16]byte
 
-	offset uint64
-	size   uint64
-	index  uint64
+	Offset uint64
+	Size   uint64
+	Index  uint64
 }
 
 type SlidingWindow struct {
@@ -125,8 +125,8 @@ func (chunk Chunk) String() string {
 			"md5 hash : %v \n "+
 			"offset   : %v \n "+
 			"size     : %v \n ",
-		chunk.CheckSum, chunk.strongHash,
-		chunk.offset, chunk.size,
+		chunk.CheckSum, chunk.StrongHash,
+		chunk.Offset, chunk.Size,
 	)
 	return chunkStr
 }

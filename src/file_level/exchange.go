@@ -51,7 +51,7 @@ SearchLoop:
 			for idx, chunk := range res {
 
 				// check if candidate has the same strong hash as the window
-				if chunk.strongHash == md5.Sum(ex.sourceFile.slidingWin.GetBuffer()) {
+				if chunk.StrongHash == md5.Sum(ex.sourceFile.slidingWin.GetBuffer()) {
 					// empty the type A buffer into a packet and
 					// append it to reonstruction header
 					if len(packetAData) > 0 {
@@ -64,7 +64,7 @@ SearchLoop:
 
 					// construct the type B packet
 					idxBytes := make([]byte, 8)
-					binary.LittleEndian.PutUint64(idxBytes, chunk.index)
+					binary.LittleEndian.PutUint64(idxBytes, chunk.Index)
 					response = append(response, ResponsePacket{
 						B_BLOCK,
 						idxBytes,

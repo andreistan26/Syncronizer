@@ -3,9 +3,9 @@
         {   
             "test_name": "sample_test",
             "iterations": 10,
-            "file_size_range": [50000, 70000],
+            "file_size_range": [9000, 70000],
             "mutation": {
-                "mutation_range": [40, 80],
+                "mutation_range": [30, 40],
                 "has_type_b": true,
                 "has_type_a": true,
                 "chunk_size": 4096,
