@@ -35,8 +35,10 @@ func (serv *SyncServerTCP) Run() error {
 
 		fmt.Fprintf(os.Stderr, "TCP connection established with %v\n", conn.RemoteAddr().String())
 		syncConn := InitSyncConn(conn)
-		syncConn.HandleConnection()
-		conn.Close()
+		go func() {
+			defer conn.Close()
+			syncConn.HandleConnection()
+		}()
 	}
 }
 
