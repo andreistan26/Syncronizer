@@ -1,7 +1,6 @@
 package transport
 
 import (
-	"bufio"
 	"encoding/gob"
 	"fmt"
 	"log"
@@ -9,7 +8,6 @@ import (
 )
 
 type SyncConn struct {
-	RW      *bufio.ReadWriter
 	Encoder *gob.Encoder
 	Decoder *gob.Decoder
 }
