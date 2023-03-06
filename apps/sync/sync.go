@@ -21,7 +21,7 @@ func main() {
 
 	mainCmd, opts := cmd.CreateMainCommand()
 	mainCmd.AddCommand(cmd.CreateSendCommand(opts))
-	mainCmd.AddCommand(cmd.CreateServerCommand(opts))
+	mainCmd.AddCommand(cmd.CreateServerCommand())
 	if err := mainCmd.Execute(); err != nil {
 		os.Exit(1)
 	}

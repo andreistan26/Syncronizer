@@ -66,9 +66,6 @@ func NewCheckSum(bytes []byte) (sum CheckSum, a_sum, b_sum uint32) {
 		b_sum += uint32(chunk_len-idx) * signExtend(el)
 	}
 
-	//a_sum %= MOD2_16
-	//b_sum %= MOD2_16
-
 	sum = CheckSum(a_sum)&0xffff | CheckSum(b_sum)<<16
 
 	return sum, a_sum, b_sum

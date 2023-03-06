@@ -28,10 +28,12 @@ func CreateSendCommand(opts *options.Options) *cobra.Command {
 	}
 
 	command.Flags().BoolVarP(&opts.Verbose, "verbose", "v", true, "increase verbosity")
+	command.Flags().IntVar(&opts.Port, "Port", options.DEFAULT_PORT, "specify address port")
 	return command
 }
 
-func CreateServerCommand(opts *options.Options) *cobra.Command {
+func CreateServerCommand() *cobra.Command {
+	opts := &options.ServerOptions{}
 	command := &cobra.Command{
 		Use:   `server [OPTIONS]`,
 		Short: `starts a server that listens for clients`,
@@ -39,6 +41,8 @@ func CreateServerCommand(opts *options.Options) *cobra.Command {
 			return ExecuteStartServer(opts)
 		},
 	}
+
+	command.Flags().IntVar(&opts.Port, "Port", options.DEFAULT_PORT, "specify port")
 	return command
 }
 

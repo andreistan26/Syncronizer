@@ -172,8 +172,6 @@ func (sf SourceFile) String() string {
 	)
 }
 
-// TODO refactor this
-
 // returns io.EOF if i cannot read anymore
 // my buffer is 4 * CHUNK_SIZE so i need to read 3 * CHUNK_SIZE
 // reads next 3 * CHUNK_SIZE bytes from file and resets k and l

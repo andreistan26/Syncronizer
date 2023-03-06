@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/andreistan26/sync/src/file_level"
 	"github.com/andreistan26/sync/src/options"
 	transport "github.com/andreistan26/sync/src/transfer_level"
@@ -32,12 +34,12 @@ func ExecuteHostExchange(opts *options.Options) error {
 }
 
 func ExecuteTCPExchange(opts *options.Options) error {
-	opts.Dest.Address += ":42069"
+	opts.Dest.Address += fmt.Sprintf(":%d", opts.Port)
 	return transport.SendFile(opts)
 }
 
-func ExecuteStartServer(options *options.Options) error {
-	serv, err := transport.StartServer(42069)
+func ExecuteStartServer(opts *options.ServerOptions) error {
+	serv, err := transport.StartServer(options.DEFAULT_PORT)
 	if err != nil {
 		panic(err)
 	}

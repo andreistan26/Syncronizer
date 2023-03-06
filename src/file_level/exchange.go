@@ -15,7 +15,6 @@ type RsyncExchange struct {
 
 type HashMap map[CheckSum][]*Chunk
 
-// TODO add error handle
 func CreateRsyncExchange(sf *SourceFile, remoteChunks []Chunk) (RsyncExchange, error) {
 	ex := RsyncExchange{
 		sourceFile: sf,
@@ -32,7 +31,6 @@ func CreateRsyncExchange(sf *SourceFile, remoteChunks []Chunk) (RsyncExchange, e
 
 // copy pasted from https://stackoverflow.com/questions/37334119/how-to-delete-an-element-from-a-slice-in-golang
 // apparently one of the only safe ways to do this smh
-// TODO remove this pls
 func RemoveIndex(s []*Chunk, index int) []*Chunk {
 	ret := make([]*Chunk, len(s)-1)
 	ret = append(ret, s[:index]...)
@@ -79,10 +77,8 @@ SearchLoop:
 				}
 			}
 			fmt.Fprintf(os.Stderr, "Checksum matched but strongHash didn't, %v vals\n", ex.HashMap[ex.sourceFile.slidingWin.checkSum])
-			// TODO replace with acutal log, bad way to keep track of things
 		}
 
-		// TODO optimize this, appending every byte..
 		packetAData = append(packetAData, ex.sourceFile.slidingWin.buffer[ex.sourceFile.slidingWin.k_idx])
 
 		// construction of the type A packet
@@ -116,7 +112,5 @@ SearchLoop:
 		}
 	}
 
-	// TODO continue to search and append remaining bytes like [Chunk][Chunk][rem]
-	// rem will not be added from the loop above
 	return response
 }
